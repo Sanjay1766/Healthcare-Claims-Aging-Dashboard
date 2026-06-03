@@ -1,0 +1,429 @@
+HEALTHCARE CLAIMS AGING DASHBOARD
+Google Drive + Excel + Pandas + Streamlit + Plotly
+
+=========================================================
+WORKFLOW
+=========================================================
+
+Google Drive Folder
+        ↓
+Google Drive API
+        ↓
+Download Latest Excel File
+        ↓
+Pandas Data Processing
+        ↓
+Metrics Calculation
+        ↓
+Plotly Visualizations
+        ↓
+Streamlit Dashboard
+
+=========================================================
+PROJECT STRUCTURE
+=========================================================
+
+aging-dashboard/
+
+│
+├── app.py
+├── drive_connector.py
+├── data_loader.py
+├── metrics.py
+├── charts.py
+├── requirements.txt
+│
+├── credentials/
+│   └── service_account.json
+│
+├── downloads/
+│
+└── data/
+
+=========================================================
+TASK 1 - GOOGLE DRIVE CONNECTOR
+=========================================================
+
+Create a Python module called drive_connector.py.
+
+Requirements:
+
+1. Use Google Drive API with a Service Account.
+2. Authenticate using a service_account.json file.
+3. Accept a Google Drive Folder ID.
+4. Find the most recently modified Excel file (.xlsx) in the folder.
+5. Download the file locally into a downloads directory.
+6. Return the downloaded file path.
+7. Add proper logging.
+8. Add exception handling.
+9. Use:
+   - google-api-python-client
+   - google-auth
+
+Expected Output:
+
+latest_file_path = get_latest_excel_file(folder_id)
+
+=========================================================
+TASK 2 - EXCEL DATA LOADER
+=========================================================
+
+Create data_loader.py.
+
+Requirements:
+
+1. Accept an Excel file path.
+2. Load all worksheets using pandas.
+3. Return:
+
+{
+    sheet_name: dataframe
+}
+
+4. Handle missing sheets gracefully.
+5. Standardize column names:
+   - trim spaces
+   - lowercase
+   - replace spaces with underscores
+   - remove special characters
+
+6. Add logging.
+7. Add validation checks.
+
+Expected Output:
+
+all_sheets = load_excel_file(file_path)
+
+=========================================================
+TASK 3 - DATA CLEANING LAYER
+=========================================================
+
+Create reusable cleaning functions.
+
+Requirements:
+
+1. Remove duplicate rows.
+2. Handle null values.
+3. Standardize date columns.
+4. Convert balance columns to numeric.
+5. Normalize aging bucket values.
+
+Supported Aging Buckets:
+
+0-30
+31-45
+46-60
+60+
+
+Create a clean dataframe ready for analytics.
+
+Expected Output:
+
+clean_df = clean_claim_data(df)
+
+=========================================================
+TASK 4 - AGING METRICS ENGINE
+=========================================================
+
+Create metrics.py.
+
+Requirements:
+
+Calculate:
+
+1. Total Claims
+2. Open Claims
+3. Closed Claims
+4. Total Outstanding Balance
+5. Total Collected Amount
+
+Create aging bucket summary:
+
+Group By:
+- 0-30
+- 31-45
+- 46-60
+- 60+
+
+Metrics:
+
+- Claim Count
+- Outstanding Balance
+- Percentage of Total Balance
+
+Return results as DataFrames.
+
+Expected Output:
+
+aging_summary_df
+
+=========================================================
+TASK 5 - CLAIMS WORKED ANALYSIS
+=========================================================
+
+Extend metrics.py.
+
+Requirements:
+
+Calculate:
+
+1. Claims Worked by Employee
+2. Unique Claims Touched
+3. Total Touches
+4. Average Touches Per Claim
+
+Group By:
+
+- Worked By
+- Aging Bucket
+
+Generate DataFrames suitable for Plotly.
+
+Expected Outputs:
+
+employee_productivity_df
+
+aging_worked_df
+
+=========================================================
+TASK 6 - COLLECTION ANALYSIS
+=========================================================
+
+Create collection analytics functions.
+
+Requirements:
+
+Calculate:
+
+1. Total Dollars Recovered
+2. Dollars Recovered by Aging Bucket
+3. Dollars Recovered by Employee
+4. Recovery Percentage
+
+Metrics:
+
+Recovery Percentage =
+Recovered Amount / Total Outstanding Amount
+
+Add validation for missing columns.
+
+Expected Outputs:
+
+collection_summary_df
+
+employee_collection_df
+
+=========================================================
+TASK 7 - PLOTLY VISUALIZATION MODULE
+=========================================================
+
+Create charts.py.
+
+Use Plotly Express.
+
+Build reusable chart functions.
+
+Chart 1:
+Aging Bucket Distribution
+
+Type:
+Stacked Bar Chart
+
+Chart 2:
+Outstanding Balance by Aging Bucket
+
+Type:
+Bar Chart
+
+Chart 3:
+Claims Worked by Employee
+
+Type:
+Horizontal Bar Chart
+
+Chart 4:
+Collection Amount by Aging Bucket
+
+Type:
+Bar Chart
+
+Chart 5:
+Collection Amount by Employee
+
+Type:
+Bar Chart
+
+Chart 6:
+Claims Worked vs Dollars Recovered
+
+Type:
+Scatter Plot
+
+Requirements:
+
+- Responsive sizing
+- Interactive hover tooltips
+- Filter support
+
+=========================================================
+TASK 8 - STREAMLIT DASHBOARD
+=========================================================
+
+Create app.py.
+
+Dashboard Title:
+
+Healthcare Claims Aging Dashboard
+
+Sidebar Filters:
+
+1. Aging Bucket
+2. Employee
+3. Claim Status
+4. Date Range
+
+Top KPI Cards:
+
+- Total Claims
+- Open Claims
+- Closed Claims
+- Outstanding Balance
+- Dollars Recovered
+- Claims Worked
+
+=========================================================
+PAGE 1 - EXECUTIVE SUMMARY
+=========================================================
+
+Display:
+
+1. KPI Cards
+2. Aging Distribution Chart
+3. Outstanding Balance Chart
+4. Collection Summary
+
+Purpose:
+
+Provide leadership overview.
+
+=========================================================
+PAGE 2 - AGING ANALYSIS
+=========================================================
+
+Display:
+
+1. Aging Bucket Distribution
+2. Outstanding Balance by Bucket
+3. Aging Percentage Breakdown
+
+Key Questions Answered:
+
+- How many claims are in each bucket?
+- Where is the money concentrated?
+- Is 60+ bucket growing?
+
+=========================================================
+PAGE 3 - PRODUCTIVITY ANALYSIS
+=========================================================
+
+Display:
+
+1. Claims Worked by Employee
+2. Claims Worked by Aging Bucket
+3. Unique Claims Touched
+4. Average Touches Per Claim
+
+Key Questions Answered:
+
+- Who is working the most claims?
+- Which aging buckets are receiving attention?
+
+=========================================================
+PAGE 4 - COLLECTION ANALYSIS
+=========================================================
+
+Display:
+
+1. Dollars Recovered by Employee
+2. Dollars Recovered by Aging Bucket
+3. Recovery Percentage
+
+Key Questions Answered:
+
+- Who recovered the most dollars?
+- Which bucket generates the most recoveries?
+
+=========================================================
+TASK 9 - STREAMLIT PERFORMANCE OPTIMIZATION
+=========================================================
+
+Requirements:
+
+1. Use st.cache_data()
+2. Cache downloaded files
+3. Cache processed dataframes
+4. Cache metrics calculations
+5. Minimize API calls
+
+=========================================================
+TASK 10 - AUTO REFRESH FROM GOOGLE DRIVE
+=========================================================
+
+Requirements:
+
+1. Check Google Drive every 30 minutes.
+2. Detect if source file changed.
+3. Download latest version.
+4. Refresh dashboard data automatically.
+5. Display last refresh timestamp.
+
+=========================================================
+TASK 11 - ERROR HANDLING
+=========================================================
+
+Requirements:
+
+Handle:
+
+1. Missing Excel files
+2. Corrupted Excel files
+3. Google Drive authentication failures
+4. Missing columns
+5. Empty worksheets
+6. API timeouts
+
+Display user-friendly messages in Streamlit.
+
+=========================================================
+TASK 12 - EXPORT FEATURES
+=========================================================
+
+Requirements:
+
+Allow users to export:
+
+1. Aging Summary
+2. Claims Worked Analysis
+3. Collection Analysis
+
+Formats:
+
+- Excel
+- CSV
+
+Use Streamlit download buttons.
+
+=========================================================
+FINAL DELIVERABLE
+=========================================================
+
+A production-ready Streamlit application that:
+
+1. Connects to Google Drive.
+2. Downloads the latest Excel aging report.
+3. Processes claim data automatically.
+4. Calculates aging, productivity, and collection metrics.
+5. Displays interactive Plotly dashboards.
+6. Supports filtering and exports.
+7. Refreshes automatically when the Excel file changes.
+8. Requires no manual uploads from end users.

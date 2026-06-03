@@ -1,0 +1,19 @@
+# API Credentials & Sensitive Data
+credentials/
+*.json
+*.pem
+
+# Python Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Python Cache & Compiled Files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Operating System Files
+.DS_Store
+Thumbs.db

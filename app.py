@@ -1,0 +1,591 @@
+from __future__ import annotations
+
+from datetime import datetime
+from io import BytesIO
+import logging
+import os
+
+import pandas as pd
+import streamlit as st
+
+import importlib
+import cleaning
+import metrics
+import charts
+import trend_analysis
+
+# Hot-reload modules on rerun
+importlib.reload(cleaning)
+importlib.reload(metrics)
+importlib.reload(charts)
+importlib.reload(trend_analysis)
+
+from charts import (
+    aging_bucket_distribution,
+    aging_bucket_trend,
+    claims_done_distribution,
+    claims_trend_over_time,
+    claims_worked_by_employee,
+    claims_worked_trend,
+    collection_amount_by_bucket,
+    collection_amount_by_employee,
+    outstanding_balance_by_bucket,
+    outstanding_balance_trend,
+    recovery_trend,
+    worked_vs_recovered,
+)
+from cleaning import clean_claim_data, normalize_aging_bucket
+from google_sheets_connector import load_spreadsheet_workbook
+from trend_analysis import build_historical_trend_data
+from metrics import (
+    calculate_aging_summary,
+    calculate_aging_worked,
+    calculate_claims_done_summary,
+    calculate_collection_summary,
+    calculate_employee_collection,
+    calculate_employee_productivity,
+    calculate_topline_metrics,
+    resolve_aging_bucket_column,
+    resolve_claim_status_column,
+    resolve_worked_by_column,
+)
+
+try:
+    from streamlit_autorefresh import st_autorefresh
+except Exception:  # pragma: no cover
+    st_autorefresh = None
+
+
+logging.basicConfig(level=logging.INFO)
+st.set_page_config(page_title="Healthcare Claims Aging Dashboard", layout="wide")
+
+# Injecting Premium Sleek Custom Stylesheet
+css = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+
+/* Main App Container */
+.stApp {
+    background-color: #030712 !important;
+    background-image: 
+        radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.08) 0px, transparent 50%),
+        radial-gradient(at 100% 0%, rgba(6, 182, 212, 0.08) 0px, transparent 50%) !important;
+    font-family: 'Plus Jakarta Sans', sans-serif !important;
+    color: #f1f5f9 !important;
+}
+
+/* Adjust top padding to pull layout upwards safely without cutting off */
+.block-container {
+    padding-top: 2.5rem !important;
+    padding-bottom: 2rem !important;
+}
+
+/* Transparent Streamlit Header & Top Decoration */
+header[data-testid="stHeader"] {
+    background-color: transparent !important;
+    background: transparent !important;
+}
+div[data-testid="stDecoration"] {
+    background: linear-gradient(90deg, #06b6d4, #6366f1) !important;
+}
+
+/* Make custom component iframes and containers transparent */
+iframe {
+    background-color: transparent !important;
+    background: transparent !important;
+}
+div[data-testid="stCustomComponentV1"] {
+    background-color: transparent !important;
+    background: transparent !important;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+    width: 6px !important;
+    height: 6px !important;
+}
+::-webkit-scrollbar-track {
+    background: #030712 !important;
+}
+::-webkit-scrollbar-thumb {
+    background: #1e293b !important;
+    border-radius: 10px !important;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #334155 !important;
+}
+
+/* Sidebar Styling */
+section[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #090d16 0%, #030712 100%) !important;
+    border-right: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+section[data-testid="stSidebar"] .stMarkdown p {
+    color: #9ca3af !important;
+    font-size: 14px !important;
+}
+section[data-testid="stSidebar"] h2 {
+    color: #06b6d4 !important;
+    font-size: 18px !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.5px !important;
+}
+
+/* Sidebar Radio Selector */
+div[data-testid="stRadio"] > label {
+    font-weight: 600 !important;
+    color: #e5e7eb !important;
+    font-size: 14px !important;
+}
+div[data-testid="stRadio"] label[data-baseweb="radio"] {
+    background-color: rgba(30, 41, 59, 0.3) !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+    border-radius: 10px !important;
+    padding: 12px 16px !important;
+    margin-bottom: 10px !important;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    width: 100% !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+}
+div[data-testid="stRadio"] label[data-baseweb="radio"]:hover {
+    background-color: rgba(30, 41, 59, 0.65) !important;
+    border-color: rgba(6, 182, 212, 0.4) !important;
+    transform: translateX(4px) !important;
+    box-shadow: 0 0 15px rgba(6, 182, 212, 0.1) !important;
+    cursor: pointer !important;
+}
+div[data-testid="stRadio"] label[data-baseweb="radio"] div {
+    color: #ffffff !important;
+    font-weight: 600 !important;
+}
+div[data-testid="stRadio"] label[data-baseweb="radio"] div[data-testid="stMarker"] {
+    border-color: #06b6d4 !important;
+    background-color: #06b6d4 !important;
+}
+
+/* Main Dashboard Header */
+.main-header {
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.8) 0%, rgba(30, 41, 59, 0.6) 100%) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 20px !important;
+    padding: 30px !important;
+    margin-bottom: 35px !important;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4) !important;
+    position: relative !important;
+    overflow: hidden !important;
+}
+.main-header::before {
+    content: '' !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 3px !important;
+    background: linear-gradient(90deg, #06b6d4 0%, #6366f1 50%, #a855f7 100%) !important;
+}
+
+/* Metric Cards styling */
+div[data-testid="metric-container"] {
+    background: rgba(15, 23, 42, 0.5) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+    border-radius: 18px !important;
+    padding: 20px 12px !important;
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2) !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    position: relative !important;
+    overflow: hidden !important;
+}
+div[data-testid="metric-container"]:hover {
+    transform: translateY(-4px) !important;
+    border-color: rgba(6, 182, 212, 0.4) !important;
+    box-shadow: 0 20px 30px rgba(0, 0, 0, 0.4), 0 0 20px rgba(6, 182, 212, 0.15) !important;
+}
+div[data-testid="metric-container"]::before {
+    content: '' !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 3px !important;
+    background: linear-gradient(90deg, #06b6d4 0%, #6366f1 100%) !important;
+}
+
+/* Metric Value and Label */
+div[data-testid="stMetricValue"] > div {
+    font-size: 22px !important;
+    font-weight: 800 !important;
+    color: #ffffff !important;
+    font-family: 'Plus Jakarta Sans', sans-serif !important;
+    letter-spacing: -0.5px !important;
+    background: linear-gradient(135deg, #ffffff 60%, #cbd5e1 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+div[data-testid="stMetricLabel"] > div {
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    color: #94a3b8 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1.5px !important;
+    margin-bottom: 6px !important;
+}
+
+/* Streamlit Native Selectbox & Inputs override */
+div[data-baseweb="select"] > div {
+    background-color: rgba(15, 23, 42, 0.8) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 10px !important;
+    color: #ffffff !important;
+    padding: 2px 4px !important;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
+    transition: all 0.2s ease-in-out !important;
+}
+div[data-baseweb="select"] > div:hover {
+    border-color: #06b6d4 !important;
+    box-shadow: 0 0 10px rgba(6, 182, 212, 0.1) !important;
+}
+
+/* Dataframe & Tables styling */
+[data-testid="stDataFrame"] {
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 14px !important;
+    overflow: hidden !important;
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2) !important;
+    background-color: #0f172a !important;
+}
+
+/* Info and Warning Alerts */
+div[data-testid="stNotification"] {
+    background-color: rgba(15, 23, 42, 0.6) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 14px !important;
+    color: #f1f5f9 !important;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* Plotly Chart container styling */
+div[class="stPlotlyChart"] {
+    background-color: rgba(15, 23, 42, 0.4) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+    border-radius: 20px !important;
+    padding: 20px !important;
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.25) !important;
+    margin-bottom: 30px !important;
+    transition: all 0.3s ease !important;
+}
+div[class="stPlotlyChart"]:hover {
+    border-color: rgba(255, 255, 255, 0.12) !important;
+    box-shadow: 0 20px 45px rgba(0, 0, 0, 0.35) !important;
+}
+
+/* Download Buttons styling */
+.stDownloadButton button,
+button[data-testid="baseButton-secondary"] {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%) !important;
+    color: #06b6d4 !important;
+    border: 1px solid rgba(6, 182, 212, 0.4) !important;
+    border-radius: 10px !important;
+    font-weight: 600 !important;
+    padding: 10px 20px !important;
+    transition: all 0.25s ease !important;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
+}
+.stDownloadButton button:hover,
+button[data-testid="baseButton-secondary"]:hover {
+    background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%) !important;
+    color: #ffffff !important;
+    border-color: #06b6d4 !important;
+    box-shadow: 0 0 15px rgba(6, 182, 212, 0.4) !important;
+    transform: translateY(-1px) !important;
+}
+.stDownloadButton button p,
+.stDownloadButton button span,
+button[data-testid="baseButton-secondary"] p,
+button[data-testid="baseButton-secondary"] span {
+    color: inherit !important;
+    font-weight: 600 !important;
+}
+</style>
+"""
+st.markdown(css, unsafe_allow_html=True)
+
+# Centered Header styling and text
+st.markdown(
+    """
+    <div style="text-align: center; margin-top: 0px; margin-bottom: 20px;">
+        <h1 style="font-size: 2.4rem; font-weight: 800; background: linear-gradient(135deg, #ffffff 40%, #a5f3fc 70%, #c084fc 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 12px; font-family: 'Plus Jakarta Sans', sans-serif; letter-spacing: -0.5px;">
+            Healthcare Accounts Receivable & Claims Aging Dashboard
+        </h1>
+        <p style="font-size: 1.05rem; color: #94a3b8; max-width: 900px; margin: 0 auto; font-family: 'Plus Jakarta Sans', sans-serif; line-height: 1.5; font-weight: 400;">
+            Enterprise financial analytics platform for tracking claims status, employee productivity, and balance recovery trends.
+        </p>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+
+SPREADSHEET_ID = "1c6m8b_8a7liJZx0Am1suxbXeZnpVwHYB35FNStUQtE8"
+
+
+@st.cache_data(show_spinner=False)
+def load_source_data(spreadsheet_id: str, credentials_path: str):
+    return load_spreadsheet_workbook(spreadsheet_id, credentials_path=credentials_path)
+
+
+def _first_existing_column(frame: pd.DataFrame, candidates: list[str]) -> str | None:
+    for candidate in candidates:
+        if candidate in frame.columns:
+            return candidate
+    return None
+
+
+def _normalize_date_series(series: pd.Series) -> pd.Series:
+    return pd.to_datetime(series, errors="coerce")
+
+
+def _apply_filters(
+    frame: pd.DataFrame,
+    aging_column: str | None,
+    selected_aging: list[str],
+    employee_column: str | None,
+    selected_employees: list[str],
+    status_column: str | None,
+    selected_statuses: list[str],
+    date_column: str | None,
+    selected_dates: tuple | None,
+) -> pd.DataFrame:
+    filtered = frame.copy()
+
+    if aging_column and selected_aging:
+        filtered = filtered[
+            filtered[aging_column].map(normalize_aging_bucket).astype(str).isin(selected_aging)
+        ]
+
+    if employee_column and selected_employees:
+        emp_series = filtered[employee_column].fillna("Unassigned").astype(str)
+        filtered = filtered[emp_series.isin(selected_employees)]
+
+    if status_column and selected_statuses:
+        status_series = filtered[status_column].fillna("Blank").astype(str)
+        filtered = filtered[status_series.isin(selected_statuses)]
+
+    if date_column and isinstance(selected_dates, tuple) and len(selected_dates) == 2:
+        start_date, end_date = selected_dates
+        date_series = _normalize_date_series(filtered[date_column])
+        filtered = filtered[(date_series.dt.date >= start_date) & (date_series.dt.date <= end_date)]
+
+    return filtered
+
+
+def _build_excel_export(sheets_map: dict[str, pd.DataFrame]) -> bytes:
+    buffer = BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        for sheet_name, sheet_df in sheets_map.items():
+            sheet_df.to_excel(writer, sheet_name=sheet_name[:31], index=False)
+    buffer.seek(0)
+    return buffer.read()
+
+
+def _download_pair(title: str, dataframe: pd.DataFrame, file_stem: str) -> None:
+    left, right = st.columns(2)
+    with left:
+        st.download_button(
+            f"Download {title} CSV",
+            dataframe.to_csv(index=False).encode("utf-8"),
+            file_name=f"{file_stem}.csv",
+            mime="text/csv",
+        )
+    with right:
+        st.download_button(
+            f"Download {title} Excel",
+            _build_excel_export({title: dataframe}),
+            file_name=f"{file_stem}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+
+spreadsheet_id = os.getenv("GOOGLE_SHEETS_SPREADSHEET_ID", SPREADSHEET_ID)
+credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "credentials/service_account.json")
+
+if st_autorefresh is not None:
+    st_autorefresh(interval=30 * 60 * 1000, key="claims_dashboard_refresh")
+
+if not spreadsheet_id:
+    st.info("Enter the Google Spreadsheet ID when the API link is ready. The analytics layer is scaffolded already.")
+    st.stop()
+
+try:
+    sheets = load_source_data(spreadsheet_id, credentials_path)
+    st.caption(f"Connected spreadsheet: {spreadsheet_id}")
+except Exception as exc:
+    st.error(f"Unable to load source data: {exc}")
+    st.stop()
+
+cleaned_sheets = {sheet_name: clean_claim_data(sheet_df) for sheet_name, sheet_df in sheets.items()}
+all_cleaned_rows = pd.concat(cleaned_sheets.values(), ignore_index=True) if cleaned_sheets else pd.DataFrame()
+
+aging_column_for_filters = resolve_aging_bucket_column(all_cleaned_rows)
+employee_column_for_filters = resolve_worked_by_column(all_cleaned_rows)
+status_column_for_filters = resolve_claim_status_column(all_cleaned_rows)
+date_column_for_filters = _first_existing_column(
+    all_cleaned_rows,
+    ["submission_date", "report_worked_date", "date_of_service", "resubmission_date"],
+)
+
+if date_column_for_filters is not None and not all_cleaned_rows.empty:
+    date_series = _normalize_date_series(all_cleaned_rows[date_column_for_filters])
+    valid_dates = date_series.dropna()
+    min_date = valid_dates.min().date() if not valid_dates.empty else None
+    max_date = valid_dates.max().date() if not valid_dates.empty else None
+else:
+    min_date = None
+    max_date = None
+
+# Set up selections internally without displaying filter inputs in the UI sidebar
+aging_options: list[str] = []
+if aging_column_for_filters:
+    aging_options = sorted(
+        {str(normalize_aging_bucket(value)) for value in all_cleaned_rows[aging_column_for_filters].dropna().tolist()}
+    )
+selected_aging_buckets = aging_options
+
+employee_options: list[str] = []
+if employee_column_for_filters:
+    employee_options = sorted(all_cleaned_rows[employee_column_for_filters].fillna("Unassigned").astype(str).unique().tolist())
+selected_employees = employee_options
+
+status_options: list[str] = []
+if status_column_for_filters:
+    status_options = sorted(all_cleaned_rows[status_column_for_filters].fillna("Blank").astype(str).unique().tolist())
+selected_statuses = status_options
+
+selected_date_range = (min_date, max_date) if min_date is not None and max_date is not None else None
+
+dashboard_filters = {
+    "aging_bucket": selected_aging_buckets,
+    "employee": selected_employees,
+    "claim_status": selected_statuses,
+    "date_range": selected_date_range if isinstance(selected_date_range, tuple) and len(selected_date_range) == 2 else None,
+}
+
+filtered_sheets = {
+    sheet_name: _apply_filters(
+        sheet_df,
+        aging_column_for_filters,
+        selected_aging_buckets,
+        employee_column_for_filters,
+        selected_employees,
+        status_column_for_filters,
+        selected_statuses,
+        date_column_for_filters,
+        dashboard_filters["date_range"],
+    )
+    for sheet_name, sheet_df in cleaned_sheets.items()
+}
+
+historical_data = build_historical_trend_data(filtered_sheets)
+sheet_options = historical_data.ordered_sheet_names or list(filtered_sheets.keys())
+
+if not sheet_options:
+    st.warning("No worksheets were available after filtering.")
+    st.stop()
+
+latest_sheet = historical_data.latest_sheet_name or sheet_options[-1]
+
+# Automatically combine and display the data across all worksheets combined as a single total
+frame = pd.concat(filtered_sheets.values(), ignore_index=True) if filtered_sheets else pd.DataFrame()
+
+topline = calculate_topline_metrics(frame)
+aging_summary_df = calculate_aging_summary(frame)
+employee_productivity_df = calculate_employee_productivity(frame)
+aging_worked_df = calculate_aging_worked(frame)
+collection_summary_df = calculate_collection_summary(frame)
+employee_collection_df = calculate_employee_collection(frame)
+claims_done_df = calculate_claims_done_summary(frame)
+topline_map = topline.set_index("metric")["value"] if not topline.empty else pd.Series(dtype="object")
+
+page = st.sidebar.radio(
+    "Page",
+    ["Executive Summary", "Productivity Analysis", "Historical Trends"],
+)
+
+last_refresh = st.session_state.get("last_refresh")
+if last_refresh is None:
+    last_refresh = datetime.now()
+    st.session_state["last_refresh"] = last_refresh
+st.caption(f"Last refresh: {last_refresh:%Y-%m-%d %H:%M:%S}")
+
+def format_metric_value(val, is_currency=False):
+    try:
+        if hasattr(val, "item"):
+            val = val.item()
+        num = float(val)
+        if is_currency:
+            return f"${num:,.0f}"
+        else:
+            return f"{num:,.0f}"
+    except (ValueError, TypeError):
+        return str(val)
+
+cols = st.columns(6)
+metrics = [
+    ("Total Claims", topline_map.get("Total Claims", 0)),
+    ("Open Claims", topline_map.get("Open Claims", 0)),
+    ("Closed Claims", topline_map.get("Closed Claims", 0)),
+    ("$ Outstanding Balance", topline_map.get("Total Outstanding Balance", 0)),
+    ("$ Balance Reductions", topline_map.get("Total Balance Reductions", 0)),
+    ("Claims Worked", int(employee_productivity_df["total_touches"].sum()) if not employee_productivity_df.empty else 0),
+]
+for column, (label, value) in zip(cols, metrics):
+    with column:
+        is_currency = label in ["$ Outstanding Balance", "$ Balance Reductions"]
+        st.metric(label, format_metric_value(value, is_currency=is_currency))
+
+if page == "Executive Summary":
+    st.plotly_chart(aging_bucket_distribution(aging_summary_df), use_container_width=True)
+    st.plotly_chart(outstanding_balance_by_bucket(aging_summary_df), use_container_width=True)
+    st.plotly_chart(claims_done_distribution(claims_done_df), use_container_width=True)
+    st.dataframe(collection_summary_df, use_container_width=True)
+    _download_pair("Aging Summary", aging_summary_df, "aging_summary")
+
+elif page == "Productivity Analysis":
+    st.plotly_chart(claims_worked_by_employee(employee_productivity_df), use_container_width=True)
+    st.dataframe(aging_worked_df, use_container_width=True)
+    st.dataframe(employee_productivity_df, use_container_width=True)
+    _download_pair("Claims Worked Analysis", employee_productivity_df, "claims_worked_analysis")
+
+elif page == "Historical Trends":
+    st.subheader("Historical Trends")
+    if historical_data.snapshot_summary.empty:
+        st.warning("No parseable snapshot dates were found in the worksheet names.")
+    else:
+        compare_default = (
+            historical_data.ordered_sheet_names[:4]
+            if len(historical_data.ordered_sheet_names) >= 4
+            else historical_data.ordered_sheet_names
+        )
+
+        selected_sheets = st.multiselect(
+            "Compare Weeks",
+            options=historical_data.ordered_sheet_names,
+            default=compare_default,
+        )
+        if not selected_sheets:
+            st.info("Select at least one snapshot to compare.")
+        else:
+            selected_summary = historical_data.snapshot_summary[
+                historical_data.snapshot_summary["sheet_name"].isin(selected_sheets)
+            ].sort_values("snapshot_date")
+
+            st.plotly_chart(claims_trend_over_time(selected_summary), use_container_width=True)
+            st.plotly_chart(outstanding_balance_trend(selected_summary), use_container_width=True)
+            st.plotly_chart(recovery_trend(selected_summary), use_container_width=True)
+            st.plotly_chart(claims_worked_trend(selected_summary), use_container_width=True)
+            st.dataframe(selected_summary, use_container_width=True)
