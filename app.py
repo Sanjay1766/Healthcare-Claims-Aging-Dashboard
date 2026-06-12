@@ -33,6 +33,9 @@ from charts import (
     outstanding_balance_trend,
     recovery_trend,
     worked_vs_recovered,
+    snapshot_progression_trend,
+    follow_up_frequency_chart,
+    employee_follow_up_chart,
 )
 from cleaning import clean_claim_data, normalize_aging_bucket
 from google_sheets_connector import load_spreadsheet_workbook
@@ -428,7 +431,11 @@ except Exception as exc:
     st.error(f"Unable to load source data: {exc}")
     st.stop()
 
-cleaned_sheets = {sheet_name: clean_claim_data(sheet_df) for sheet_name, sheet_df in sheets.items()}
+cleaned_sheets = {
+    sheet_name: clean_claim_data(sheet_df)
+    for sheet_name, sheet_df in sheets.items()
+    if pd.notna(pd.to_datetime(sheet_name, errors="coerce"))
+}
 all_cleaned_rows = pd.concat(cleaned_sheets.values(), ignore_index=True) if cleaned_sheets else pd.DataFrame()
 
 aging_column_for_filters = resolve_aging_bucket_column(all_cleaned_rows)
@@ -499,21 +506,43 @@ if not sheet_options:
 
 latest_sheet = historical_data.latest_sheet_name or sheet_options[-1]
 
-# Automatically combine and display the data across all worksheets combined as a single total
-frame = pd.concat(filtered_sheets.values(), ignore_index=True) if filtered_sheets else pd.DataFrame()
+# Create logical datasets and calculate corresponding metrics
+current_snapshot_df = filtered_sheets[latest_sheet] if latest_sheet in filtered_sheets else pd.DataFrame()
+topline_current = calculate_topline_metrics(current_snapshot_df)
+topline_current_map = topline_current.set_index("metric")["value"] if not topline_current.empty else pd.Series(dtype="object")
 
-topline = calculate_topline_metrics(frame)
-aging_summary_df = calculate_aging_summary(frame)
-employee_productivity_df = calculate_employee_productivity(frame)
-aging_worked_df = calculate_aging_worked(frame)
-collection_summary_df = calculate_collection_summary(frame)
-employee_collection_df = calculate_employee_collection(frame)
-claims_done_df = calculate_claims_done_summary(frame)
-topline_map = topline.set_index("metric")["value"] if not topline.empty else pd.Series(dtype="object")
+# Executive Summary visuals rely on the Current Snapshot Dataset
+aging_summary_df = calculate_aging_summary(current_snapshot_df)
+collection_summary_df = calculate_collection_summary(current_snapshot_df)
+claims_done_df = calculate_claims_done_summary(current_snapshot_df)
+employee_productivity_current_df = calculate_employee_productivity(current_snapshot_df)
+
+# Assemble unique claim portfolio (Unique Claim Dataset)
+portfolio_frames = []
+for sheet_name, sheet_df in filtered_sheets.items():
+    if not sheet_df.empty:
+        df_copy = sheet_df.copy()
+        df_copy["_snapshot_date"] = pd.to_datetime(sheet_name, errors="coerce")
+        portfolio_frames.append(df_copy)
+if portfolio_frames:
+    combined_portfolio = pd.concat(portfolio_frames, ignore_index=True)
+    combined_portfolio["composite_key"] = combined_portfolio["patient_id"].astype(str) + "_" + combined_portfolio["claim_id"].astype(str)
+    unique_claim_df = combined_portfolio.sort_values("_snapshot_date").drop_duplicates(subset=["composite_key"], keep="last")
+else:
+    unique_claim_df = pd.DataFrame()
+
+topline_unique = calculate_topline_metrics(unique_claim_df)
+topline_unique_map = topline_unique.set_index("metric")["value"] if not topline_unique.empty else pd.Series(dtype="object")
+
+# Operational Dataset consists of all worksheets combined (touches carry forward snapshot actions)
+operational_df = pd.concat(filtered_sheets.values(), ignore_index=True) if filtered_sheets else pd.DataFrame()
+employee_productivity_df = calculate_employee_productivity(operational_df)
+aging_worked_df = calculate_aging_worked(operational_df)
+employee_collection_df = calculate_employee_collection(operational_df)
 
 page = st.sidebar.radio(
     "Page",
-    ["Executive Summary", "Productivity Analysis", "Historical Trends"],
+    ["Executive Summary", "Productivity Analysis", "Historical Trends", "Snapshot Progression", "Follow-up Analysis"],
 )
 
 last_refresh = st.session_state.get("last_refresh")
@@ -536,12 +565,12 @@ def format_metric_value(val, is_currency=False):
 
 cols = st.columns(6)
 metrics = [
-    ("Total Claims", topline_map.get("Total Claims", 0)),
-    ("Open Claims", topline_map.get("Open Claims", 0)),
-    ("Closed Claims", topline_map.get("Closed Claims", 0)),
-    ("$ Outstanding Balance", topline_map.get("Total Outstanding Balance", 0)),
-    ("$ Balance Reductions", topline_map.get("Total Balance Reductions", 0)),
-    ("Claims Worked", int(employee_productivity_df["total_touches"].sum()) if not employee_productivity_df.empty else 0),
+    ("Total Claims", topline_current_map.get("Total Claims", 0)),
+    ("Open Claims", topline_current_map.get("Open Claims", 0)),
+    ("Closed Claims", topline_current_map.get("Closed Claims", 0)),
+    ("$ Outstanding Balance", topline_current_map.get("Total Outstanding Balance", 0)),
+    ("$ Balance Reductions", topline_current_map.get("Total Balance Reductions", 0)),
+    ("Claims Worked", int(employee_productivity_current_df["total_touches"].sum()) if not employee_productivity_current_df.empty else 0),
 ]
 for column, (label, value) in zip(cols, metrics):
     with column:
@@ -589,3 +618,209 @@ elif page == "Historical Trends":
             st.plotly_chart(recovery_trend(selected_summary), use_container_width=True)
             st.plotly_chart(claims_worked_trend(selected_summary), use_container_width=True)
             st.dataframe(selected_summary, use_container_width=True)
+
+elif page == "Snapshot Progression":
+    st.subheader("Beginning vs. End of Month Progression")
+    if historical_data.snapshot_summary.empty:
+        st.warning("No historical snapshot data is available.")
+    else:
+        # Sort chronologically to identify beginning and end of month
+        sorted_summary = historical_data.snapshot_summary.sort_values("snapshot_date").reset_index(drop=True)
+        beg_row = sorted_summary.iloc[0]
+        end_row = sorted_summary.iloc[-1]
+        
+        st.markdown("### Executive Summary KPI Progression")
+        col1, col2, col3 = st.columns(3)
+        
+        # AR Balance delta
+        beg_ar = float(beg_row["outstanding_balance"])
+        end_ar = float(end_row["outstanding_balance"])
+        ar_diff = end_ar - beg_ar
+        ar_pct = (ar_diff / beg_ar * 100) if beg_ar != 0 else 0
+        with col1:
+            st.metric(
+                label="Outstanding AR Balance Progression",
+                value=f"${end_ar:,.2f}",
+                delta=f"${ar_diff:+,.2f} ({ar_pct:+.1f}%)",
+                delta_color="inverse"
+            )
+            
+        # Recovery/Collected delta
+        beg_rec = float(beg_row["dollars_recovered"])
+        end_rec = float(end_row["dollars_recovered"])
+        rec_diff = end_rec - beg_rec
+        rec_pct = (rec_diff / beg_rec * 100) if beg_rec != 0 else 0
+        with col2:
+            st.metric(
+                label="Monthly Recovery Progression",
+                value=f"${end_rec:,.2f}",
+                delta=f"${rec_diff:+,.2f} ({rec_pct:+.1f}%)"
+            )
+            
+        # Touches delta
+        beg_tou = int(beg_row["claims_worked"])
+        end_tou = int(end_row["claims_worked"])
+        tou_diff = end_tou - beg_tou
+        tou_pct = (tou_diff / beg_tou * 100) if beg_tou != 0 else 0
+        with col3:
+            st.metric(
+                label="Weekly Touches Progression",
+                value=f"{end_tou:,}",
+                delta=f"{tou_diff:+,} ({tou_pct:+.1f}%)",
+                delta_color="inverse"
+            )
+            
+        st.markdown("---")
+        st.markdown("### Weekly Snapshot Volume Deltas")
+        col4, col5, col6 = st.columns(3)
+        
+        # Total Claims delta
+        beg_claims = int(beg_row["total_claims"])
+        end_claims = int(end_row["total_claims"])
+        claims_diff = end_claims - beg_claims
+        claims_pct = (claims_diff / beg_claims * 100) if beg_claims != 0 else 0
+        with col4:
+            st.metric(
+                label="Claims Volume Progression",
+                value=f"{end_claims:,}",
+                delta=f"{claims_diff:+,} ({claims_pct:+.1f}%)",
+                delta_color="inverse"
+            )
+            
+        # Open Claims delta
+        beg_open = int(beg_row["open_claims"])
+        end_open = int(end_row["open_claims"])
+        open_diff = end_open - beg_open
+        open_pct = (open_diff / beg_open * 100) if beg_open != 0 else 0
+        with col5:
+            st.metric(
+                label="Open Claims Progression",
+                value=f"{end_open:,}",
+                delta=f"{open_diff:+,} ({open_pct:+.1f}%)",
+                delta_color="inverse"
+            )
+            
+        # Closed Claims delta
+        beg_closed = beg_claims - beg_open
+        end_closed = end_claims - end_open
+        closed_diff = end_closed - beg_closed
+        closed_pct = (closed_diff / beg_closed * 100) if beg_closed != 0 else 0
+        with col6:
+            st.metric(
+                label="Closed Claims Progression",
+                value=f"{end_closed:,}",
+                delta=f"{closed_diff:+,} ({closed_pct:+.1f}%)"
+            )
+
+        st.plotly_chart(snapshot_progression_trend(sorted_summary), use_container_width=True)
+        
+        st.markdown("### Raw Snapshot Progression Data")
+        prog_df_display = sorted_summary.copy()
+        prog_df_display = prog_df_display.rename(columns={
+            "snapshot_label": "Snapshot Date",
+            "total_claims": "Total Claims",
+            "open_claims": "Open Claims",
+            "outstanding_balance": "Outstanding AR ($)",
+            "dollars_recovered": "Balance Reductions ($)",
+            "claims_worked": "Touches"
+        })
+        st.dataframe(prog_df_display[["Snapshot Date", "Total Claims", "Open Claims", "Outstanding AR ($)", "Balance Reductions ($)", "Touches"]], use_container_width=True)
+        _download_pair("Progression Analysis", prog_df_display, "progression_analysis")
+
+elif page == "Follow-up Analysis":
+    st.subheader("Denials Follow-up & Touch Frequency Analysis")
+    
+    # Combine all weekly worksheets
+    frames_all = []
+    for sheet_name, sheet_df in filtered_sheets.items():
+        if not sheet_df.empty:
+            df_copy = sheet_df.copy()
+            df_copy["_sheet_name"] = sheet_name
+            df_copy["_snapshot_date"] = pd.to_datetime(sheet_name, errors="coerce")
+            frames_all.append(df_copy)
+            
+    if not frames_all:
+        st.warning("No data is available for follow-up analysis.")
+    else:
+        combined_all = pd.concat(frames_all, ignore_index=True)
+        combined_all["composite_key"] = combined_all["patient_id"].astype(str) + "_" + combined_all["claim_id"].astype(str)
+        
+        # Clean worked actions (non-null report_worked_by)
+        worked_only = combined_all[combined_all["report_worked_by"].notna()].copy()
+        
+        if worked_only.empty:
+            st.info("No claims have been worked in the active datasets.")
+        else:
+            # Group by composite key to find touch stats
+            follow_stats = (
+                worked_only.groupby("composite_key")
+                .agg(
+                    touch_count=("report_worked_by", "size"),
+                    unique_workers=("report_worked_by", "nunique"),
+                    worked_dates=("report_worked_date", "nunique"),
+                    latest_status=("claim_status", "last"),
+                    latest_balance=("claim_balance", "last"),
+                    initial_balance=("claim_balance", "first"),
+                    patient_id=("patient_id", "first"),
+                    claim_id=("claim_id", "first"),
+                    plan_name=("plan_name", "first"),
+                    report_worked_by=("report_worked_by", "last")
+                )
+                .reset_index()
+            )
+            
+            # Follow-up claims: touched > 1 time
+            follow_stats["recovered_amount"] = (follow_stats["initial_balance"] - follow_stats["latest_balance"]).clip(lower=0)
+            multi_touch_claims = follow_stats[follow_stats["touch_count"] > 1].copy()
+            
+            # Overview KPIs
+            total_unique_worked = len(follow_stats)
+            total_followed_up = len(multi_touch_claims)
+            follow_up_rate = (total_followed_up / total_unique_worked * 100) if total_unique_worked > 0 else 0
+            avg_touches_followup = multi_touch_claims["touch_count"].mean() if total_followed_up > 0 else 0
+            total_recovered_followup = multi_touch_claims["recovered_amount"].sum()
+            
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Unique Claims Worked", f"{total_unique_worked:,}")
+            with col2:
+                st.metric("Claims Followed Up (>1 Touch)", f"{total_followed_up:,}", f"{follow_up_rate:.1f}% Follow-up Rate")
+            with col3:
+                st.metric("Avg Touches / Follow-up", f"{avg_touches_followup:.2f}")
+            with col4:
+                st.metric("AR Recovered via Follow-ups", f"${total_recovered_followup:,.2f}")
+                
+            st.markdown("---")
+            
+            # Charts
+            freq_series = follow_stats["touch_count"].value_counts().reset_index()
+            freq_series.columns = ["touch_count", "claim_count"]
+            freq_series["touch_count"] = freq_series["touch_count"].astype(str) + "x"
+            freq_series = freq_series.sort_values("touch_count")
+            
+            st.plotly_chart(follow_up_frequency_chart(freq_series), use_container_width=True)
+                
+            # Registry Table
+            st.markdown("### Detailed Claims Follow-up Registry")
+            st.markdown("Listing claims worked multiple times in the month with balance changes:")
+            
+            registry_display = multi_touch_claims.copy()
+            registry_display = registry_display.rename(columns={
+                "patient_id": "Patient ID",
+                "claim_id": "Claim ID",
+                "plan_name": "Plan Name",
+                "touch_count": "Total Touches",
+                "initial_balance": "Initial Balance ($)",
+                "latest_balance": "Latest Balance ($)",
+                "recovered_amount": "Recovered Amount ($)",
+                "latest_status": "Latest Status",
+                "report_worked_by": "Last Action By"
+            })
+            
+            cols_to_show = [
+                "Patient ID", "Claim ID", "Plan Name", "Total Touches", 
+                "Initial Balance ($)", "Latest Balance ($)", "Recovered Amount ($)", 
+                "Latest Status", "Last Action By"
+            ]
+            st.dataframe(registry_display[cols_to_show].sort_values("Total Touches", ascending=False), use_container_width=True)
+            _download_pair("Claims Follow-up Registry", registry_display[cols_to_show], "claims_followup_registry")

@@ -408,3 +408,115 @@ def claims_done_distribution(done_df: pd.DataFrame):
     fig.update_xaxes(title_text="Aging Bucket")
 
     return fig
+
+
+def snapshot_progression_trend(prog_df: pd.DataFrame):
+    if prog_df is None or prog_df.empty:
+        return go.Figure()
+    
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    
+    # Outstanding AR (Left Axis - Orange/Amber)
+    fig.add_trace(
+        go.Scatter(
+            x=prog_df["snapshot_label"] if "snapshot_label" in prog_df.columns else prog_df["Snapshot"],
+            y=prog_df["outstanding_balance"],
+            name="Outstanding AR ($)",
+            mode="lines+markers",
+            line=dict(color="#f59e0b", width=3),
+            marker=dict(size=8, line=dict(color="#0f172a", width=1)),
+            hovertemplate="Snapshot: %{x}<br>Outstanding AR: $%{y:,.2f}<extra></extra>"
+        ),
+        secondary_y=False
+    )
+    
+    # Balance Reductions / Recovery (Right Axis - Green)
+    fig.add_trace(
+        go.Scatter(
+            x=prog_df["snapshot_label"] if "snapshot_label" in prog_df.columns else prog_df["Snapshot"],
+            y=prog_df["dollars_recovered"],
+            name="Balance Reductions ($)",
+            mode="lines+markers",
+            line=dict(color="#10b981", width=3),
+            marker=dict(size=8, line=dict(color="#0f172a", width=1)),
+            hovertemplate="Snapshot: %{x}<br>Balance Reductions: $%{y:,.2f}<extra></extra>"
+        ),
+        secondary_y=True
+    )
+    
+    _style_dark_figure(fig, title="Week-over-Week Outstanding AR vs. Balance Reductions Progression", height=450)
+    fig.update_layout(
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
+    )
+    fig.update_yaxes(title_text="Outstanding AR ($)", tickprefix="$", tickformat=",.0f", secondary_y=False)
+    fig.update_yaxes(title_text="Balance Reductions ($)", tickprefix="$", tickformat=",.0f", secondary_y=True)
+    return fig
+
+
+def follow_up_frequency_chart(freq_df: pd.DataFrame):
+    if freq_df is None or freq_df.empty:
+        return go.Figure()
+    
+    fig = px.bar(
+        freq_df,
+        x="touch_count",
+        y="claim_count",
+        labels={"touch_count": "Touch Frequency in Month", "claim_count": "Unique Claims Count"},
+        color="touch_count",
+        color_discrete_sequence=px.colors.sequential.Agsunset,
+        text="claim_count"
+    )
+    
+    fig.update_traces(
+        texttemplate="<b>%{text}</b>",
+        textposition="outside",
+        textfont=dict(size=12, color="#f1f5f9", family="'Plus Jakarta Sans', sans-serif"),
+        cliponaxis=False,
+        marker_line_color="rgba(255, 255, 255, 0.1)",
+        marker_line_width=1,
+        hovertemplate="Touched %{x} times: %{y} claims<extra></extra>"
+    )
+    
+    max_val = freq_df["claim_count"].max() if not freq_df.empty else 100
+    fig.update_yaxes(range=[0, max_val * 1.15])
+    fig.update_layout(showlegend=False)
+    fig.update_xaxes(type="category")
+    
+    return _style_dark_figure(fig, "Claim Follow-up Touch Frequency Distribution")
+
+
+def employee_follow_up_chart(follow_df: pd.DataFrame):
+    if follow_df is None or follow_df.empty:
+        return go.Figure()
+    
+    fig = px.bar(
+        follow_df,
+        x="follow_up_touches",
+        y="worked_by",
+        orientation="h",
+        color="worked_by",
+        color_discrete_sequence=px.colors.sequential.Burgyl_r,
+        labels={"follow_up_touches": "Follow-up Touches", "worked_by": "Employee"},
+        text="follow_up_touches"
+    )
+    
+    fig.update_traces(
+        texttemplate="<b>%{text}</b>",
+        textposition="outside",
+        textfont=dict(size=12, color="#f1f5f9", family="'Plus Jakarta Sans', sans-serif"),
+        cliponaxis=False,
+        marker_line_color="rgba(255, 255, 255, 0.1)",
+        marker_line_width=1
+    )
+    
+    max_val = follow_df["follow_up_touches"].max() if not follow_df.empty else 100
+    fig.update_xaxes(range=[0, max_val * 1.15])
+    fig.update_layout(showlegend=False)
+    
+    return _style_dark_figure(fig, "Employee Follow-up Touches on Multi-touch Claims")

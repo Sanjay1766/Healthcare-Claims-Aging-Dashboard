@@ -53,7 +53,7 @@ def clean_claim_data(df: pd.DataFrame) -> pd.DataFrame:
 
     for column in cleaned.columns:
         if _column_matches(column, ["report_worked_date", "submission_date", "resubmission_date"]):
-            cleaned[column] = pd.to_datetime(cleaned[column], errors="coerce")
+            cleaned[column] = pd.to_datetime(cleaned[column], errors="coerce", format="mixed")
 
     for column in cleaned.columns:
         if _column_matches(column, ["balance", "amount", "recovered", "collected", "paid", "charge"]) and not _column_matches(column, ["aging_bucket", "aging", "bucket"]):

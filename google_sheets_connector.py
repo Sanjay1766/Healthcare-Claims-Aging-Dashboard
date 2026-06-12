@@ -44,8 +44,21 @@ def _values_to_dataframe(values: list[list[object]]) -> pd.DataFrame:
         return pd.DataFrame()
 
     header = [standardize_column_name(column) for column in values[0]]
+    max_cols = max(len(row) for row in values)
+    if len(header) < max_cols:
+        header = header + [f"column_{i}" for i in range(len(header), max_cols)]
+    header = [name if name else f"column_{i}" for i, name in enumerate(header)]
+
     rows = values[1:] if len(values) > 1 else []
-    frame = pd.DataFrame(rows, columns=header)
+    padded_rows = []
+    for row in rows:
+        if len(row) < len(header):
+            row = list(row) + [None] * (len(header) - len(row))
+        elif len(row) > len(header):
+            row = list(row)[:len(header)]
+        padded_rows.append(row)
+
+    frame = pd.DataFrame(padded_rows, columns=header)
     return frame
 
 
