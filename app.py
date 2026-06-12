@@ -681,7 +681,7 @@ elif page == "Snapshot Progression":
         claims_pct = (claims_diff / beg_claims * 100) if beg_claims != 0 else 0
         with col4:
             st.metric(
-                label="Claims Volume Progression",
+                label="Total Claims",
                 value=f"{end_claims:,}",
                 delta=f"{claims_diff:+,} ({claims_pct:+.1f}%)",
                 delta_color="inverse"
@@ -694,7 +694,7 @@ elif page == "Snapshot Progression":
         open_pct = (open_diff / beg_open * 100) if beg_open != 0 else 0
         with col5:
             st.metric(
-                label="Open Claims Progression",
+                label="Remaining Claims",
                 value=f"{end_open:,}",
                 delta=f"{open_diff:+,} ({open_pct:+.1f}%)",
                 delta_color="inverse"
@@ -707,7 +707,7 @@ elif page == "Snapshot Progression":
         closed_pct = (closed_diff / beg_closed * 100) if beg_closed != 0 else 0
         with col6:
             st.metric(
-                label="Closed Claims Progression",
+                label="Closed Claim",
                 value=f"{end_closed:,}",
                 delta=f"{closed_diff:+,} ({closed_pct:+.1f}%)"
             )

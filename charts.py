@@ -416,7 +416,21 @@ def snapshot_progression_trend(prog_df: pd.DataFrame):
     
     fig = make_subplots(specs=[[{"secondary_y": True}]])
     
-    # Outstanding AR (Left Axis - Orange/Amber)
+    # Total Claims (Left Axis - Cyan/Blue)
+    fig.add_trace(
+        go.Scatter(
+            x=prog_df["snapshot_label"] if "snapshot_label" in prog_df.columns else prog_df["Snapshot"],
+            y=prog_df["total_claims"],
+            name="Total Claims",
+            mode="lines+markers",
+            line=dict(color="#06b6d4", width=3),
+            marker=dict(size=8, line=dict(color="#0f172a", width=1)),
+            hovertemplate="Snapshot: %{x}<br>Total Claims: %{y:,}<extra></extra>"
+        ),
+        secondary_y=False
+    )
+    
+    # Outstanding AR (Right Axis - Orange/Amber)
     fig.add_trace(
         go.Scatter(
             x=prog_df["snapshot_label"] if "snapshot_label" in prog_df.columns else prog_df["Snapshot"],
@@ -427,24 +441,10 @@ def snapshot_progression_trend(prog_df: pd.DataFrame):
             marker=dict(size=8, line=dict(color="#0f172a", width=1)),
             hovertemplate="Snapshot: %{x}<br>Outstanding AR: $%{y:,.2f}<extra></extra>"
         ),
-        secondary_y=False
-    )
-    
-    # Balance Reductions / Recovery (Right Axis - Green)
-    fig.add_trace(
-        go.Scatter(
-            x=prog_df["snapshot_label"] if "snapshot_label" in prog_df.columns else prog_df["Snapshot"],
-            y=prog_df["dollars_recovered"],
-            name="Balance Reductions ($)",
-            mode="lines+markers",
-            line=dict(color="#10b981", width=3),
-            marker=dict(size=8, line=dict(color="#0f172a", width=1)),
-            hovertemplate="Snapshot: %{x}<br>Balance Reductions: $%{y:,.2f}<extra></extra>"
-        ),
         secondary_y=True
     )
     
-    _style_dark_figure(fig, title="Week-over-Week Outstanding AR vs. Balance Reductions Progression", height=450)
+    _style_dark_figure(fig, title="Week-over-Week Total Claims vs. Outstanding AR Progression", height=450)
     fig.update_layout(
         legend=dict(
             orientation="h",
@@ -454,8 +454,8 @@ def snapshot_progression_trend(prog_df: pd.DataFrame):
             x=1
         )
     )
-    fig.update_yaxes(title_text="Outstanding AR ($)", tickprefix="$", tickformat=",.0f", secondary_y=False)
-    fig.update_yaxes(title_text="Balance Reductions ($)", tickprefix="$", tickformat=",.0f", secondary_y=True)
+    fig.update_yaxes(title_text="Total Claims", tickformat=",.0f", secondary_y=False)
+    fig.update_yaxes(title_text="Outstanding AR ($)", tickprefix="$", tickformat=",.0f", secondary_y=True)
     return fig
 
 
