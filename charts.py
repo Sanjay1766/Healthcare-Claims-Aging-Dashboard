@@ -414,48 +414,74 @@ def snapshot_progression_trend(prog_df: pd.DataFrame):
     if prog_df is None or prog_df.empty:
         return go.Figure()
     
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    # Ensure sorted by date
+    df = prog_df.sort_values("snapshot_date").copy()
     
-    # Total Claims (Left Axis - Cyan/Blue)
+    # Map snapshot dates to Week labels
+    target_dates = [
+        pd.to_datetime("2026-05-04").date(),
+        pd.to_datetime("2026-05-11").date(),
+        pd.to_datetime("2026-05-18").date(),
+        pd.to_datetime("2026-05-26").date(),
+    ]
+    
+    df["date_only"] = df["snapshot_date"].dt.date
+    df = df[df["date_only"].isin(target_dates)].copy()
+    
+    date_to_week = {
+        target_dates[0]: "Week 1",
+        target_dates[1]: "Week 2",
+        target_dates[2]: "Week 3",
+        target_dates[3]: "Week 4"
+    }
+    df["week_label"] = df["date_only"].map(date_to_week)
+    df = df.dropna(subset=["week_label"]).sort_values("snapshot_date")
+    
+    if df.empty:
+        return go.Figure()
+
+    fig = go.Figure()
+    
+    outstanding_ar = df["outstanding_balance"].tolist()
+    outstanding_ar_text = [f"<b>${v/1e6:.3f}M</b>" for v in outstanding_ar]
+    
     fig.add_trace(
         go.Scatter(
-            x=prog_df["snapshot_label"] if "snapshot_label" in prog_df.columns else prog_df["Snapshot"],
-            y=prog_df["total_claims"],
-            name="Total Claims",
-            mode="lines+markers",
-            line=dict(color="#06b6d4", width=3),
-            marker=dict(size=8, line=dict(color="#0f172a", width=1)),
-            hovertemplate="Snapshot: %{x}<br>Total Claims: %{y:,}<extra></extra>"
-        ),
-        secondary_y=False
-    )
-    
-    # Outstanding AR (Right Axis - Orange/Amber)
-    fig.add_trace(
-        go.Scatter(
-            x=prog_df["snapshot_label"] if "snapshot_label" in prog_df.columns else prog_df["Snapshot"],
-            y=prog_df["outstanding_balance"],
+            x=df["week_label"],
+            y=outstanding_ar,
             name="Outstanding AR ($)",
-            mode="lines+markers",
-            line=dict(color="#f59e0b", width=3),
-            marker=dict(size=8, line=dict(color="#0f172a", width=1)),
-            hovertemplate="Snapshot: %{x}<br>Outstanding AR: $%{y:,.2f}<extra></extra>"
-        ),
-        secondary_y=True
-    )
-    
-    _style_dark_figure(fig, title="Week-over-Week Total Claims vs. Outstanding AR Progression", height=450)
-    fig.update_layout(
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
+            mode="lines+markers+text",
+            line=dict(color="#f59e0b", width=4),
+            marker=dict(size=10, symbol="circle", line=dict(color="#030712", width=2)),
+            text=outstanding_ar_text,
+            textposition="top center",
+            textfont=dict(family="'Plus Jakarta Sans', sans-serif", size=12, color="#f59e0b"),
+            hovertemplate="Week: %{x}<br>Outstanding AR: $%{y:,.2f}<extra></extra>"
         )
     )
-    fig.update_yaxes(title_text="Total Claims", tickformat=",.0f", secondary_y=False)
-    fig.update_yaxes(title_text="Outstanding AR ($)", tickprefix="$", tickformat=",.0f", secondary_y=True)
+    
+    _style_dark_figure(fig, title="Week-over-Week Outstanding AR Progression", height=450)
+    fig.update_layout(
+        showlegend=False,
+        margin=dict(l=60, r=60, t=50, b=50),
+    )
+    
+    # Configure axes
+    min_ar = min(outstanding_ar)
+    max_ar = max(outstanding_ar)
+    fig.update_yaxes(
+        title_text="Outstanding AR ($)", 
+        range=[min_ar - 20000, max_ar + 20000],
+        showgrid=True,
+        gridcolor="rgba(255, 255, 255, 0.05)",
+        tickprefix="$", 
+        tickformat=",.0f"
+    )
+    
+    fig.update_xaxes(
+        title_text="",
+        showgrid=False
+    )
     return fig
 
 
@@ -520,3 +546,111 @@ def employee_follow_up_chart(follow_df: pd.DataFrame):
     fig.update_layout(showlegend=False)
     
     return _style_dark_figure(fig, "Employee Follow-up Touches on Multi-touch Claims")
+
+
+def executive_productivity_trend_chart(prog_df: pd.DataFrame):
+    if prog_df is None or prog_df.empty:
+        return go.Figure()
+    
+    # Ensure sorted by date
+    df = prog_df.sort_values("snapshot_date").copy()
+    
+    # Map snapshot dates to Week labels
+    target_dates = [
+        pd.to_datetime("2026-05-04").date(),
+        pd.to_datetime("2026-05-11").date(),
+        pd.to_datetime("2026-05-18").date(),
+        pd.to_datetime("2026-05-26").date(),
+    ]
+    
+    df["date_only"] = df["snapshot_date"].dt.date
+    df = df[df["date_only"].isin(target_dates)].copy()
+    
+    date_to_week = {
+        target_dates[0]: "Week 1",
+        target_dates[1]: "Week 2",
+        target_dates[2]: "Week 3",
+        target_dates[3]: "Week 4"
+    }
+    df["week_label"] = df["date_only"].map(date_to_week)
+    df = df.dropna(subset=["week_label"]).sort_values("snapshot_date")
+    
+    if df.empty:
+        return go.Figure()
+
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    
+    # Line 1: Claim Count (Left Axis - Cyan)
+    claim_counts = df["total_claims"].tolist()
+    claim_count_text = [f"<b>{int(c):,}</b>" for c in claim_counts]
+    
+    fig.add_trace(
+        go.Scatter(
+            x=df["week_label"],
+            y=claim_counts,
+            name="Claim Count",
+            mode="lines+markers+text",
+            line=dict(color="#06b6d4", width=4),
+            marker=dict(size=10, symbol="circle", line=dict(color="#030712", width=2)),
+            text=claim_count_text,
+            textposition="top center",
+            textfont=dict(family="'Plus Jakarta Sans', sans-serif", size=12, color="#06b6d4"),
+            hovertemplate="Week: %{x}<br>Claim Count: %{y:,}<extra></extra>"
+        ),
+        secondary_y=False
+    )
+    
+    # Line 2: Outstanding AR (Right Axis - Amber)
+    outstanding_ar = df["outstanding_balance"].tolist()
+    outstanding_ar_text = [f"<b>${v/1e6:.3f}M</b>" for v in outstanding_ar]
+    
+    fig.add_trace(
+        go.Scatter(
+            x=df["week_label"],
+            y=outstanding_ar,
+            name="Outstanding AR ($)",
+            mode="lines+markers+text",
+            line=dict(color="#f59e0b", width=4),
+            marker=dict(size=10, symbol="circle", line=dict(color="#030712", width=2)),
+            text=outstanding_ar_text,
+            textposition="bottom center",
+            textfont=dict(family="'Plus Jakarta Sans', sans-serif", size=12, color="#f59e0b"),
+            hovertemplate="Week: %{x}<br>Outstanding AR: $%{y:,.2f}<extra></extra>"
+        ),
+        secondary_y=True
+    )
+    
+    # Apply styling
+    _style_dark_figure(fig, title="", height=480)
+    fig.update_layout(
+        showlegend=False,
+        margin=dict(l=60, r=60, t=40, b=40),
+    )
+    
+    # Configure axes
+    min_count = min(claim_counts)
+    max_count = max(claim_counts)
+    fig.update_yaxes(
+        title_text="Claim Count", 
+        secondary_y=False,
+        range=[min_count - 50, max_count + 50],
+        showgrid=True,
+        gridcolor="rgba(255, 255, 255, 0.05)"
+    )
+    
+    min_ar = min(outstanding_ar)
+    max_ar = max(outstanding_ar)
+    fig.update_yaxes(
+        title_text="Outstanding AR ($)", 
+        secondary_y=True,
+        range=[min_ar - 20000, max_ar + 20000],
+        showgrid=False
+    )
+    
+    fig.update_xaxes(
+        title_text="",
+        showgrid=False
+    )
+    
+    return fig
+

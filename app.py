@@ -36,6 +36,7 @@ from charts import (
     snapshot_progression_trend,
     follow_up_frequency_chart,
     employee_follow_up_chart,
+    executive_productivity_trend_chart,
 )
 from cleaning import clean_claim_data, normalize_aging_bucket
 from google_sheets_connector import load_spreadsheet_workbook
@@ -591,33 +592,81 @@ elif page == "Productivity Analysis":
     _download_pair("Claims Worked Analysis", employee_productivity_df, "claims_worked_analysis")
 
 elif page == "Historical Trends":
-    st.subheader("Historical Trends")
     if historical_data.snapshot_summary.empty:
-        st.warning("No parseable snapshot dates were found in the worksheet names.")
+        st.warning("No historical snapshot data is available.")
     else:
-        compare_default = (
-            historical_data.ordered_sheet_names[:4]
-            if len(historical_data.ordered_sheet_names) >= 4
-            else historical_data.ordered_sheet_names
-        )
-
-        selected_sheets = st.multiselect(
-            "Compare Weeks",
-            options=historical_data.ordered_sheet_names,
-            default=compare_default,
-        )
-        if not selected_sheets:
-            st.info("Select at least one snapshot to compare.")
+        # Get the summary data
+        sorted_summary = historical_data.snapshot_summary.sort_values("snapshot_date").copy()
+        
+        # Filter to target dates
+        target_dates = [
+            pd.to_datetime("2026-05-04").date(),
+            pd.to_datetime("2026-05-11").date(),
+            pd.to_datetime("2026-05-18").date(),
+            pd.to_datetime("2026-05-26").date(),
+        ]
+        sorted_summary["date_only"] = sorted_summary["snapshot_date"].dt.date
+        sorted_summary = sorted_summary[sorted_summary["date_only"].isin(target_dates)].copy()
+        
+        if len(sorted_summary) < 4:
+            st.warning("Ensure that worksheets for all 4 weeks of May 2026 (5/4/2026, 5/11/2026, 5/18/2026, 5/26/2026) are loaded.")
         else:
-            selected_summary = historical_data.snapshot_summary[
-                historical_data.snapshot_summary["sheet_name"].isin(selected_sheets)
-            ].sort_values("snapshot_date")
-
-            st.plotly_chart(claims_trend_over_time(selected_summary), use_container_width=True)
-            st.plotly_chart(outstanding_balance_trend(selected_summary), use_container_width=True)
-            st.plotly_chart(recovery_trend(selected_summary), use_container_width=True)
-            st.plotly_chart(claims_worked_trend(selected_summary), use_container_width=True)
-            st.dataframe(selected_summary, use_container_width=True)
+            # Sort chronologically to compute metrics
+            sorted_summary = sorted_summary.sort_values("snapshot_date").reset_index(drop=True)
+            
+            # Slide Header (Title and Subtitle)
+            st.markdown(
+                """
+                <div style="text-align: left; margin-top: 10px; margin-bottom: 25px;">
+                    <h2 style="font-size: 2.2rem; font-weight: 800; color: #ffffff; font-family: 'Plus Jakarta Sans', sans-serif; margin-bottom: 5px;">
+                        Monthly Productivity Trend
+                    </h2>
+                    <p style="font-size: 1.1rem; color: #94a3b8; font-family: 'Plus Jakarta Sans', sans-serif; margin: 0; font-weight: 400;">
+                        Claims Inventory and Outstanding AR Progression &bull; May 2026
+                    </p>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            
+            # Draw single dual-axis chart
+            st.plotly_chart(executive_productivity_trend_chart(sorted_summary), use_container_width=True)
+            
+            # Executive Insight Section
+            # Calculate values dynamically
+            beg_row = sorted_summary.iloc[0]
+            end_row = sorted_summary.iloc[-1]
+            
+            beg_claims = int(beg_row["total_claims"])
+            end_claims = int(end_row["total_claims"])
+            claims_diff = beg_claims - end_claims  # positive means reduction
+            
+            beg_ar = float(beg_row["outstanding_balance"])
+            end_ar = float(end_row["outstanding_balance"])
+            ar_diff = beg_ar - end_ar  # positive means reduction
+            
+            st.markdown(
+                f"""
+                <div style="background-color: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 18px; padding: 25px; margin-top: 10px;">
+                    <h3 style="color: #ffffff; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 1.35rem; font-weight: 700; margin-top: 0; margin-bottom: 15px;">Executive Summary</h3>
+                    <p style="color: #cbd5e1; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 1rem; line-height: 1.6; margin-bottom: 12px;">
+                        Claims inventory decreased from <b>{beg_claims:,}</b> claims to <b>{end_claims:,}</b> claims during May 2026.
+                    </p>
+                    <p style="color: #cbd5e1; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 1rem; line-height: 1.6; margin-bottom: 20px;">
+                        Outstanding AR decreased from <b>${beg_ar/1e6:.3f}M</b> to <b>${end_ar/1e6:.3f}M</b>.
+                    </p>
+                    <h4 style="color: #ffffff; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 1.05rem; font-weight: 600; margin-top: 0; margin-bottom: 10px;">Net Improvement:</h4>
+                    <ul style="color: #cbd5e1; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 1rem; line-height: 1.6; margin-top: 0; margin-bottom: 20px; padding-left: 20px;">
+                        <li><b>{claims_diff:,}</b> fewer claims in inventory</li>
+                        <li><b>${ar_diff/1e3:.0f}K</b> reduction in outstanding receivables</li>
+                    </ul>
+                    <p style="color: #94a3b8; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.95rem; line-height: 1.6; margin-bottom: 0; font-style: italic;">
+                        This indicates positive operational productivity and portfolio reduction over the reporting period.
+                    </p>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
 
 elif page == "Snapshot Progression":
     st.subheader("Beginning vs. End of Month Progression")
@@ -728,7 +777,7 @@ elif page == "Snapshot Progression":
         _download_pair("Progression Analysis", prog_df_display, "progression_analysis")
 
 elif page == "Follow-up Analysis":
-    st.subheader("Denials Follow-up & Touch Frequency Analysis")
+    st.subheader("Denials Follow-up Frequency Analysis")
     
     # Combine all weekly worksheets
     frames_all = []
