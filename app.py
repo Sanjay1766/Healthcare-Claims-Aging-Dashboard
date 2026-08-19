@@ -1078,7 +1078,7 @@ elif page == "AI Chat":
         user_prompt = st.session_state["chat_messages"][-2]["content"]
         
         # Compile live metrics context to give Groq detailed environment info using our database logic
-        topline_str = topline_current_map.to_string() if not topline_current_map.empty else "No topline data available"
+        topline_str = "\n".join(f"{k}: {v}" for k, v in topline_current_map.items()) if topline_current_map else "No topline data available"
         aging_str = aging_summary_df.to_string(index=False) if not aging_summary_df.empty else "No aging bucket data available"
         productivity_str = employee_productivity_df.to_string(index=False) if not employee_productivity_df.empty else "No employee productivity data available"
         collection_str = collection_summary_df.to_string(index=False) if not collection_summary_df.empty else "No collection summary data available"
@@ -1101,6 +1101,10 @@ elif page == "AI Chat":
         
         # Call Groq LLM API
         response = get_groq_response(user_prompt, context_str)
+
+        # Guard against empty response
+        if not response or not response.strip():
+            response = "I was unable to generate a response. Please try again."
 
         # Update the placeholder message with the final response and refresh the page
         st.session_state["chat_messages"][-1]["content"] = response
