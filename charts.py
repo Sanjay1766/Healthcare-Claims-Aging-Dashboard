@@ -58,7 +58,7 @@ def aging_bucket_distribution(summary_df: pd.DataFrame):
             texttemplate="<b>%{text}</b>",
             textfont=dict(size=12, family="'Plus Jakarta Sans', sans-serif", color="#f1f5f9"),
             marker=dict(
-                color="#06b6d4",
+                color="#2563eb",
                 line=dict(color="rgba(255, 255, 255, 0.1)", width=0.5)
             ),
             hovertemplate="Aging Bucket: %{x}<br>Total Claims: %{y}<extra></extra>"
@@ -76,7 +76,7 @@ def aging_bucket_distribution(summary_df: pd.DataFrame):
             texttemplate="<b>%{text}</b>",
             textfont=dict(size=12, family="'Plus Jakarta Sans', sans-serif", color="#f1f5f9"),
             marker=dict(
-                color="#10b981",
+                color="#60a5fa",
                 line=dict(color="rgba(255, 255, 255, 0.1)", width=0.5)
             ),
             hovertemplate="Aging Bucket: %{x}<br>Claims Done: %{y}<extra></extra>"
@@ -118,7 +118,7 @@ def outstanding_balance_by_bucket(summary_df: pd.DataFrame):
             texttemplate="<b>%{text}</b>",
             textfont=dict(size=12, family="'Plus Jakarta Sans', sans-serif", color="#f1f5f9"),
             marker=dict(
-                color="#6366f1",
+                color="#1d4ed8",
                 line=dict(color="rgba(255, 255, 255, 0.1)", width=0.5)
             ),
             hovertemplate="Aging Bucket: %{x}<br>Total Balance: $%{y:,.2f}<extra></extra>"
@@ -136,7 +136,7 @@ def outstanding_balance_by_bucket(summary_df: pd.DataFrame):
             texttemplate="<b>%{text}</b>",
             textfont=dict(size=12, family="'Plus Jakarta Sans', sans-serif", color="#f1f5f9"),
             marker=dict(
-                color="#f43f5e",
+                color="#06b6d4",
                 line=dict(color="rgba(255, 255, 255, 0.1)", width=0.5)
             ),
             hovertemplate="Aging Bucket: %{x}<br>Outstanding Balance: $%{y:,.2f}<extra></extra>"
@@ -170,7 +170,7 @@ def claims_worked_by_employee(productivity_df: pd.DataFrame):
         y="worked_by",
         orientation="h",
         color="worked_by",
-        color_discrete_sequence=px.colors.sequential.Agsunset,
+        color_discrete_sequence=["#06b6d4", "#0284c7", "#3b82f6", "#6366f1", "#1d4ed8", "#1e40af"],
         labels={"total_touches": "Total Touches", "worked_by": "Employee"},
         text="total_touches",
     )
@@ -195,7 +195,7 @@ def collection_amount_by_bucket(collection_df: pd.DataFrame):
         x="aging_bucket",
         y="recovered_amount",
         color="aging_bucket",
-        color_discrete_sequence=px.colors.sequential.Burgyl_r,
+        color_discrete_sequence=["#06b6d4", "#0284c7", "#3b82f6", "#6366f1", "#1d4ed8", "#1e40af"],
         labels={"recovered_amount": "Recovered Amount ($)", "aging_bucket": "Aging Bucket"},
         text="recovered_amount",
     )
@@ -220,7 +220,7 @@ def collection_amount_by_employee(employee_collection_df: pd.DataFrame):
         x="worked_by",
         y="recovered_amount",
         color="recovered_amount",
-        color_continuous_scale="Purples",
+        color_continuous_scale="Blues",
         labels={"recovered_amount": "Recovered Amount ($)", "worked_by": "Employee"},
         text="recovered_amount",
     )
@@ -250,7 +250,7 @@ def worked_vs_recovered(productivity_df: pd.DataFrame, employee_collection_df: p
         y="recovered_amount",
         size="unique_claims_touched",
         color="worked_by",
-        color_discrete_sequence=px.colors.qualitative.Pastel,
+        color_discrete_sequence=["#60a5fa", "#3b82f6", "#2563eb", "#06b6d4", "#0284c7", "#6366f1"],
         labels={
             "total_touches": "Total Touches",
             "recovered_amount": "Recovered Amount ($)",
@@ -273,7 +273,7 @@ def claims_trend_over_time(trend_df: pd.DataFrame):
         x="snapshot_date",
         y=["total_claims", "open_claims"],
         markers=True,
-        color_discrete_sequence=["#38bdf8", "#ec4899"],
+        color_discrete_sequence=["#0284c7", "#93c5fd"],
         labels={"value": "Count", "snapshot_date": "Snapshot Date", "variable": "Claim Type"},
     )
     fig.update_traces(line=dict(width=3), marker=dict(size=8, line=dict(width=1, color="#0f172a")))
@@ -288,7 +288,7 @@ def outstanding_balance_trend(trend_df: pd.DataFrame):
         x="snapshot_date",
         y="outstanding_balance",
         markers=True,
-        color_discrete_sequence=["#f59e0b"],
+        color_discrete_sequence=["#3b82f6"],
         labels={"outstanding_balance": "Outstanding Balance ($)", "snapshot_date": "Snapshot Date"},
     )
     fig.update_traces(line=dict(width=3), marker=dict(size=8, line=dict(width=1, color="#0f172a")))
@@ -303,7 +303,7 @@ def recovery_trend(trend_df: pd.DataFrame):
         x="snapshot_date",
         y="dollars_recovered",
         markers=True,
-        color_discrete_sequence=["#10b981"],
+        color_discrete_sequence=["#00d2ff"],
         labels={"dollars_recovered": "Dollars Recovered ($)", "snapshot_date": "Snapshot Date"},
     )
     fig.update_traces(line=dict(width=3), marker=dict(size=8, line=dict(width=1, color="#0f172a")))
@@ -318,7 +318,7 @@ def aging_bucket_trend(aging_df: pd.DataFrame):
         x="snapshot_date",
         y="claim_count",
         color="aging_bucket",
-        color_discrete_sequence=px.colors.sequential.Agsunset,
+        color_discrete_sequence=["#1e3a8a", "#1d4ed8", "#3b82f6", "#60a5fa"],
         barmode="stack",
         labels={"claim_count": "Claim Count", "snapshot_date": "Snapshot Date", "aging_bucket": "Aging Bucket"},
     )
@@ -333,7 +333,7 @@ def claims_worked_trend(trend_df: pd.DataFrame):
         x="snapshot_date",
         y="claims_worked",
         markers=True,
-        color_discrete_sequence=["#a855f7"],
+        color_discrete_sequence=["#38bdf8"],
         labels={"claims_worked": "Claims Worked", "snapshot_date": "Snapshot Date"},
     )
     fig.update_traces(line=dict(width=3), marker=dict(size=8, line=dict(width=1, color="#0f172a")))
@@ -362,7 +362,7 @@ def claims_done_distribution(done_df: pd.DataFrame):
             cliponaxis=False,
             offsetgroup=1,
             marker=dict(
-                color="#10b981",
+                color="#2563eb",
                 line=dict(color="rgba(255, 255, 255, 0.1)", width=0.5)
             ),
             hovertemplate="Aging Bucket: %{x}<br>Claims Done: %{y}<extra></extra>"
@@ -383,7 +383,7 @@ def claims_done_distribution(done_df: pd.DataFrame):
             cliponaxis=False,
             offsetgroup=2,
             marker=dict(
-                color="#f59e0b",
+                color="#00d2ff",
                 line=dict(color="rgba(255, 255, 255, 0.1)", width=0.5)
             ),
             hovertemplate="Aging Bucket: %{x}<br>Amount Recovered: $%{y:,.2f}<extra></extra>"
@@ -451,11 +451,11 @@ def snapshot_progression_trend(prog_df: pd.DataFrame):
             y=outstanding_ar,
             name="Outstanding AR ($)",
             mode="lines+markers+text",
-            line=dict(color="#f59e0b", width=4),
+            line=dict(color="#3b82f6", width=4),
             marker=dict(size=10, symbol="circle", line=dict(color="#030712", width=2)),
             text=outstanding_ar_text,
             textposition="top center",
-            textfont=dict(family="'Plus Jakarta Sans', sans-serif", size=12, color="#f59e0b"),
+            textfont=dict(family="'Plus Jakarta Sans', sans-serif", size=12, color="#3b82f6"),
             hovertemplate="Week: %{x}<br>Outstanding AR: $%{y:,.2f}<extra></extra>"
         )
     )
@@ -493,9 +493,9 @@ def follow_up_frequency_chart(freq_df: pd.DataFrame):
         freq_df,
         x="touch_count",
         y="claim_count",
-        labels={"touch_count": "Touch Frequency in Month", "claim_count": "Unique Claims Count"},
+        labels={"touch_count": "Touch Frequency in Month", "claim_count": "Claims Count"},
         color="touch_count",
-        color_discrete_sequence=px.colors.sequential.Agsunset,
+        color_discrete_sequence=["#06b6d4", "#0284c7", "#3b82f6", "#6366f1", "#1d4ed8", "#1e40af"],
         text="claim_count"
     )
     
@@ -527,7 +527,7 @@ def employee_follow_up_chart(follow_df: pd.DataFrame):
         y="worked_by",
         orientation="h",
         color="worked_by",
-        color_discrete_sequence=px.colors.sequential.Burgyl_r,
+        color_discrete_sequence=["#06b6d4", "#0284c7", "#3b82f6", "#6366f1", "#1d4ed8", "#1e40af"],
         labels={"follow_up_touches": "Follow-up Touches", "worked_by": "Employee"},
         text="follow_up_touches"
     )
@@ -580,7 +580,7 @@ def executive_productivity_trend_chart(prog_df: pd.DataFrame):
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
     
-    # Line 1: Claim Count (Left Axis - Cyan)
+    # Line 1: Claim Count (Left Axis - Royal Blue)
     claim_counts = df["total_claims"].tolist()
     claim_count_text = [f"<b>{int(c):,}</b>" for c in claim_counts]
     
@@ -590,17 +590,17 @@ def executive_productivity_trend_chart(prog_df: pd.DataFrame):
             y=claim_counts,
             name="Claim Count",
             mode="lines+markers+text",
-            line=dict(color="#06b6d4", width=4),
+            line=dict(color="#2563eb", width=4),
             marker=dict(size=10, symbol="circle", line=dict(color="#030712", width=2)),
             text=claim_count_text,
             textposition="top center",
-            textfont=dict(family="'Plus Jakarta Sans', sans-serif", size=12, color="#06b6d4"),
+            textfont=dict(family="'Plus Jakarta Sans', sans-serif", size=12, color="#2563eb"),
             hovertemplate="Week: %{x}<br>Claim Count: %{y:,}<extra></extra>"
         ),
         secondary_y=False
     )
     
-    # Line 2: Outstanding AR (Right Axis - Amber)
+    # Line 2: Outstanding AR (Right Axis - Sky Blue)
     outstanding_ar = df["outstanding_balance"].tolist()
     outstanding_ar_text = [f"<b>${v/1e6:.3f}M</b>" for v in outstanding_ar]
     
@@ -610,11 +610,11 @@ def executive_productivity_trend_chart(prog_df: pd.DataFrame):
             y=outstanding_ar,
             name="Outstanding AR ($)",
             mode="lines+markers+text",
-            line=dict(color="#f59e0b", width=4),
+            line=dict(color="#00d2ff", width=4),
             marker=dict(size=10, symbol="circle", line=dict(color="#030712", width=2)),
             text=outstanding_ar_text,
             textposition="bottom center",
-            textfont=dict(family="'Plus Jakarta Sans', sans-serif", size=12, color="#f59e0b"),
+            textfont=dict(family="'Plus Jakarta Sans', sans-serif", size=12, color="#00d2ff"),
             hovertemplate="Week: %{x}<br>Outstanding AR: $%{y:,.2f}<extra></extra>"
         ),
         secondary_y=True
@@ -653,4 +653,36 @@ def executive_productivity_trend_chart(prog_df: pd.DataFrame):
     )
     
     return fig
+
+
+def bucket_follow_up_chart(bucket_df: pd.DataFrame):
+    if bucket_df is None or bucket_df.empty:
+        return go.Figure()
+    
+    fig = px.bar(
+        bucket_df,
+        x="aging_bucket",
+        y="follow_up_count",
+        labels={"aging_bucket": "Aging Bucket", "follow_up_count": "Follow-up Claims Count"},
+        color="aging_bucket",
+        color_discrete_sequence=["#06b6d4", "#0284c7", "#3b82f6", "#6366f1"],
+        text="follow_up_count"
+    )
+    
+    fig.update_traces(
+        texttemplate="<b>%{text}</b>",
+        textposition="outside",
+        textfont=dict(size=12, color="#f1f5f9", family="'Plus Jakarta Sans', sans-serif"),
+        cliponaxis=False,
+        marker_line_color="rgba(255, 255, 255, 0.1)",
+        marker_line_width=1,
+        hovertemplate="Aging Bucket: %{x}<br>Follow-up Claims: %{y}<extra></extra>"
+    )
+    
+    max_val = bucket_df["follow_up_count"].max() if not bucket_df.empty else 100
+    fig.update_yaxes(range=[0, max_val * 1.15])
+    fig.update_layout(showlegend=False)
+    fig.update_xaxes(type="category")
+    
+    return _style_dark_figure(fig, "Claims Followed Up (>1 Touch) by Aging Bucket")
 

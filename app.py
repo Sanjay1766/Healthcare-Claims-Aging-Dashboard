@@ -315,24 +315,81 @@ button[data-testid="baseButton-secondary"] span {
     color: inherit !important;
     font-weight: 600 !important;
 }
+
+/* Custom Chat Input Styling - Centered and Clean like ChatGPT */
+div[data-testid="stChatInput"] {
+    max-width: 768px !important;
+    margin: 0 auto !important;
+    background-color: #0f172a !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 12px !important;
+    padding: 4px !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+}
+div[data-testid="stChatInput"] textarea {
+    background-color: transparent !important;
+    color: #ffffff !important;
+    border: none !important;
+    font-family: 'Plus Jakarta Sans', sans-serif !important;
+    font-size: 0.95rem !important;
+}
+div[data-testid="stChatInput"] button {
+    background-color: #06b6d4 !important;
+    color: #ffffff !important;
+    border-radius: 8px !important;
+}
+div[data-testid="stChatInput"] button:hover {
+    background-color: #0891b2 !important;
+}
+
+/* Smooth fade-in animation for chat messages */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Pulse animation for the typing indicator */
+@keyframes pulse {
+    0%, 100% {
+        transform: scale(0.8);
+        opacity: 0.4;
+    }
+    50% {
+        transform: scale(1.2);
+        opacity: 1;
+    }
+}
 </style>
 """
 st.markdown(css, unsafe_allow_html=True)
 
-# Centered Header styling and text
-st.markdown(
-    """
-    <div style="text-align: center; margin-top: 0px; margin-bottom: 20px;">
-        <h1 style="font-size: 2.4rem; font-weight: 800; background: linear-gradient(135deg, #ffffff 40%, #a5f3fc 70%, #c084fc 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 12px; font-family: 'Plus Jakarta Sans', sans-serif; letter-spacing: -0.5px;">
-            Healthcare Accounts Receivable & Claims Aging Dashboard
-        </h1>
-        <p style="font-size: 1.05rem; color: #94a3b8; max-width: 900px; margin: 0 auto; font-family: 'Plus Jakarta Sans', sans-serif; line-height: 1.5; font-weight: 400;">
-            Enterprise financial analytics platform for tracking claims status, employee productivity, and balance recovery trends.
-        </p>
-    </div>
-    """,
-    unsafe_allow_html=True
+# Select the page first so we can conditionally render components
+page = st.sidebar.radio(
+    "Page",
+    ["Executive Summary", "Productivity Analysis", "Historical Trends", "Snapshot Progression", "Follow-up Analysis", "AI Chat"],
 )
+
+# Centered Header styling and text (hidden on AI Chat page)
+if page != "AI Chat":
+    st.markdown(
+        """
+        <div style="text-align: center; margin-top: 0px; margin-bottom: 20px;">
+            <h1 style="font-size: 2.4rem; font-weight: 800; background: linear-gradient(135deg, #ffffff 40%, #a5f3fc 70%, #c084fc 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 12px; font-family: 'Plus Jakarta Sans', sans-serif; letter-spacing: -0.5px;">
+                Healthcare Accounts Receivable & Claims Aging Dashboard
+            </h1>
+            <p style="font-size: 1.05rem; color: #94a3b8; max-width: 900px; margin: 0 auto; font-family: 'Plus Jakarta Sans', sans-serif; line-height: 1.5; font-weight: 400;">
+                Enterprise financial analytics platform for tracking claims status, employee productivity, and balance recovery trends.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 
 SPREADSHEET_ID = "1c6m8b_8a7liJZx0Am1suxbXeZnpVwHYB35FNStUQtE8"
@@ -427,7 +484,8 @@ if not spreadsheet_id:
 
 try:
     sheets = load_source_data(spreadsheet_id, credentials_path)
-    st.caption(f"Connected spreadsheet: {spreadsheet_id}")
+    if page != "AI Chat":
+        st.caption(f"Connected spreadsheet: {spreadsheet_id}")
 except Exception as exc:
     st.error(f"Unable to load source data: {exc}")
     st.stop()
@@ -541,16 +599,12 @@ employee_productivity_df = calculate_employee_productivity(operational_df)
 aging_worked_df = calculate_aging_worked(operational_df)
 employee_collection_df = calculate_employee_collection(operational_df)
 
-page = st.sidebar.radio(
-    "Page",
-    ["Executive Summary", "Productivity Analysis", "Historical Trends", "Snapshot Progression", "Follow-up Analysis"],
-)
-
 last_refresh = st.session_state.get("last_refresh")
 if last_refresh is None:
     last_refresh = datetime.now()
     st.session_state["last_refresh"] = last_refresh
-st.caption(f"Last refresh: {last_refresh:%Y-%m-%d %H:%M:%S}")
+if page != "AI Chat":
+    st.caption(f"Last refresh: {last_refresh:%Y-%m-%d %H:%M:%S}")
 
 def format_metric_value(val, is_currency=False):
     try:
@@ -564,19 +618,67 @@ def format_metric_value(val, is_currency=False):
     except (ValueError, TypeError):
         return str(val)
 
-cols = st.columns(6)
-metrics = [
-    ("Total Claims", topline_current_map.get("Total Claims", 0)),
-    ("Open Claims", topline_current_map.get("Open Claims", 0)),
-    ("Closed Claims", topline_current_map.get("Closed Claims", 0)),
-    ("$ Outstanding Balance", topline_current_map.get("Total Outstanding Balance", 0)),
-    ("$ Balance Reductions", topline_current_map.get("Total Balance Reductions", 0)),
-    ("Claims Worked", int(employee_productivity_current_df["total_touches"].sum()) if not employee_productivity_current_df.empty else 0),
-]
-for column, (label, value) in zip(cols, metrics):
-    with column:
-        is_currency = label in ["$ Outstanding Balance", "$ Balance Reductions"]
-        st.metric(label, format_metric_value(value, is_currency=is_currency))
+
+def get_groq_response(user_prompt: str, current_metrics_context: str) -> str:
+    import requests
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    import os
+    groq_api_key = st.secrets.get("GROQ_API_KEY", os.environ.get("GROQ_API_KEY", ""))
+    headers = {
+        "Authorization": f"Bearer {groq_api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    # Truncate context to avoid token limit errors (must happen before building system_prompt)
+    if len(current_metrics_context) > 3000:
+        current_metrics_context = current_metrics_context[:3000] + "\n... [truncated]"
+
+    system_prompt = f"""
+    You are a professional Healthcare Accounts Receivable & Claims Assistant.
+    You have access to the live dashboard metrics below:
+    
+    {current_metrics_context}
+    
+    Answer the user's questions clearly, concisely, and professionally using the metrics provided.
+    Format your responses cleanly (bold key metrics, use bullet points for lists, etc.).
+    Do not use emojis in your response. Do not add glittering effects.
+    """
+    
+    payload = {
+        "model": "qwen/qwen3.6-27b",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        "temperature": 0.2,
+        "max_tokens": 512,
+        "reasoning_format": "hidden"
+    }
+    
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=15)
+        if not response.ok:
+            return f"Unable to fetch response from AI Assistant: {response.status_code} - {response.text}"
+        data = response.json()
+        return data["choices"][0]["message"]["content"]
+    except Exception as e:
+        return f"Unable to fetch response from AI Assistant: {str(e)}"
+
+
+if page != "AI Chat":
+    cols = st.columns(6)
+    metrics = [
+        ("Total Claims", topline_current_map.get("Total Claims", 0)),
+        ("Open Claims", topline_current_map.get("Open Claims", 0)),
+        ("Closed Claims", topline_current_map.get("Closed Claims", 0)),
+        ("$ Outstanding Balance", topline_current_map.get("Total Outstanding Balance", 0)),
+        ("$ Balance Reductions", topline_current_map.get("Total Balance Reductions", 0)),
+        ("Claims Worked", int(employee_productivity_current_df["total_touches"].sum()) if not employee_productivity_current_df.empty else 0),
+    ]
+    for column, (label, value) in zip(cols, metrics):
+        with column:
+            is_currency = label in ["$ Outstanding Balance", "$ Balance Reductions"]
+            st.metric(label, format_metric_value(value, is_currency=is_currency))
 
 if page == "Executive Summary":
     st.plotly_chart(aging_bucket_distribution(aging_summary_df), use_container_width=True)
@@ -873,3 +975,133 @@ elif page == "Follow-up Analysis":
             ]
             st.dataframe(registry_display[cols_to_show].sort_values("Total Touches", ascending=False), use_container_width=True)
             _download_pair("Claims Follow-up Registry", registry_display[cols_to_show], "claims_followup_registry")
+
+
+elif page == "AI Chat":
+    # Top-centered clean title block, no emoji, no glittering/neon line effects
+    st.markdown(
+        """
+        <div style="text-align: center; margin-top: 20px; margin-bottom: 40px;">
+            <h2 style="font-size: 2.2rem; font-weight: 700; color: #ffffff; font-family: 'Plus Jakarta Sans', sans-serif; margin-bottom: 10px; letter-spacing: -0.5px;">
+                Agentic Reporting
+            </h2>
+            <p style="font-size: 1.05rem; color: #94a3b8; font-family: 'Plus Jakarta Sans', sans-serif; margin: 0 auto; max-width: 600px; font-weight: 400; line-height: 1.5;">
+                Interact with the AI Assistant to query live claims metrics, analyze aging buckets, and check employee recovery progress.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # Initialize chat history
+    if "chat_messages" not in st.session_state:
+        st.session_state["chat_messages"] = [
+            {
+                "role": "assistant", 
+                "content": "Hello! I am your AI Claims Assistant. How can I help you analyze your accounts receivable, claims productivity, or collection trends today?"
+            }
+        ]
+
+    # Display chat messages from history inside centered layout with no emoji or glitter
+    for message in st.session_state["chat_messages"]:
+        content_html = message["content"]
+        
+        # If the content is "loading", display a clean professional pulsing typing indicator
+        if content_html == "loading":
+            content_html = """
+            <div style="display: flex; gap: 6px; align-items: center; height: 20px;">
+                <span style="width: 6px; height: 6px; background-color: #94a3b8; border-radius: 50%; display: inline-block; animation: pulse 1.2s infinite ease-in-out;"></span>
+                <span style="width: 6px; height: 6px; background-color: #94a3b8; border-radius: 50%; display: inline-block; animation: pulse 1.2s infinite ease-in-out; animation-delay: 0.2s;"></span>
+                <span style="width: 6px; height: 6px; background-color: #94a3b8; border-radius: 50%; display: inline-block; animation: pulse 1.2s infinite ease-in-out; animation-delay: 0.4s;"></span>
+            </div>
+            """
+        else:
+            # Basic markdown bold parser (**text** -> <b>text</b>)
+            import re
+            content_html = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', content_html)
+            content_html = content_html.replace("\n", "<br>")
+
+        if message["role"] == "user":
+            st.markdown(
+                f"""
+                <div style="max-width: 768px; margin: 0 auto; display: flex; justify-content: flex-end; margin-bottom: 20px;">
+                    <div style="background-color: #1e293b; 
+                                border: 1px solid rgba(255, 255, 255, 0.08); 
+                                border-radius: 12px; 
+                                padding: 14px 18px; 
+                                max-width: 80%; 
+                                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); 
+                                color: #f8fafc; 
+                                font-family: 'Plus Jakarta Sans', sans-serif;
+                                animation: fadeIn 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;">
+                        <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">You</div>
+                        <div style="font-size: 0.98rem; line-height: 1.5; font-weight: 400;">{content_html}</div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+        else:
+            st.markdown(
+                f"""
+                <div style="max-width: 768px; margin: 0 auto; display: flex; justify-content: flex-start; margin-bottom: 20px;">
+                    <div style="background-color: #0f172a; 
+                                border: 1px solid rgba(255, 255, 255, 0.08); 
+                                border-radius: 12px; 
+                                padding: 14px 18px; 
+                                max-width: 80%; 
+                                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); 
+                                color: #e2e8f0; 
+                                font-family: 'Plus Jakarta Sans', sans-serif;
+                                animation: fadeIn 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;">
+                        <div style="font-size: 0.75rem; color: #06b6d4; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">AI Claims Assistant</div>
+                        <div style="font-size: 0.98rem; line-height: 1.5; font-weight: 400;">{content_html}</div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+    # React to user input
+    if prompt := st.chat_input("Ask a question about your claims dashboard data..."):
+        # Add user message and a placeholder loading assistant bubble to history
+        st.session_state["chat_messages"].append({"role": "user", "content": prompt})
+        st.session_state["chat_messages"].append({"role": "assistant", "content": "loading"})
+        st.rerun()
+
+    # Check if there is a pending response generation
+    if (
+        st.session_state["chat_messages"] 
+        and st.session_state["chat_messages"][-1]["role"] == "assistant" 
+        and st.session_state["chat_messages"][-1]["content"] == "loading"
+    ):
+        user_prompt = st.session_state["chat_messages"][-2]["content"]
+        
+        # Compile live metrics context to give Groq detailed environment info using our database logic
+        topline_str = topline_current_map.to_string() if not topline_current_map.empty else "No topline data available"
+        aging_str = aging_summary_df.to_string(index=False) if not aging_summary_df.empty else "No aging bucket data available"
+        productivity_str = employee_productivity_df.to_string(index=False) if not employee_productivity_df.empty else "No employee productivity data available"
+        collection_str = collection_summary_df.to_string(index=False) if not collection_summary_df.empty else "No collection summary data available"
+        
+        context_str = f"""
+        Active Sheet (Snapshot Date): {latest_sheet}
+        
+        --- OVERALL DASHBOARD FINANCIAL KPIs ---
+        {topline_str}
+        
+        --- AR AGING BUCKETS DISTRIBUTION (OUR AGING LOGIC) ---
+        {aging_str}
+        
+        --- EMPLOYEE PRODUCTIVITY ANALYSIS (OUR touches AND completed_claims LOGIC) ---
+        {productivity_str}
+        
+        --- BALANCES & COLLECTION SUMMARY (OUR recovery_rate LOGIC) ---
+        {collection_str}
+        """
+        
+        # Call Groq LLM API
+        response = get_groq_response(user_prompt, context_str)
+
+        # Update the placeholder message with the final response and refresh the page
+        st.session_state["chat_messages"][-1]["content"] = response
+        st.rerun()

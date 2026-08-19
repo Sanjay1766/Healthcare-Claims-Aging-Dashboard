@@ -2,6 +2,7 @@
 credentials/
 *.json
 *.pem
+.streamlit/secrets.toml
 
 # Python Virtual Environments
 .venv/
