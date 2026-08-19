@@ -20,6 +20,19 @@ SPREADSHEET_API_ROOT = "https://sheets.googleapis.com/v4/spreadsheets"
 
 
 def _build_sheets_service(credentials_path: str):
+    # Try loading from Streamlit secrets first (for hosted/cloud deployments)
+    try:
+        import streamlit as st
+        if "gcp_service_account" in st.secrets:
+            creds_info = dict(st.secrets["gcp_service_account"])
+            credentials = service_account.Credentials.from_service_account_info(
+                creds_info, scopes=SCOPES
+            )
+            return credentials
+    except Exception:
+        pass
+
+    # Fall back to local credentials file (for local development)
     credentials_file = Path(credentials_path)
     if not credentials_file.exists():
         raise FileNotFoundError(f"Service account file not found: {credentials_file}")
